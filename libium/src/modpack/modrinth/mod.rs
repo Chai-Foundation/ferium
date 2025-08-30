@@ -43,8 +43,33 @@ pub fn create(
 
     // Add the overrides to the zip file
     if let Some(overrides) = overrides {
-        writer.create_from_directory(&overrides.to_owned())?;
+        if overrides.exists() && overrides.is_dir() {
+            // Manually add directory contents to the zip
+            add_dir_to_zip(&mut writer, &overrides, "overrides/")?;
+        }
     }
 
+    Ok(())
+}
+
+/// Helper function to add a directory to a zip writer
+fn add_dir_to_zip(writer: &mut ZipWriter<File>, dir: &Path, prefix: &str) -> zip::result::ZipResult<()> {
+    use zip::write::SimpleFileOptions;
+    
+    for entry in read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = path.strip_prefix(dir).unwrap();
+        let zip_path = format!("{}{}", prefix, name.to_string_lossy().replace('\\', "/"));
+        
+        if path.is_file() {
+            writer.start_file(&zip_path, SimpleFileOptions::default())?;
+            let mut f = File::open(&path)?;
+            copy(&mut f, writer)?;
+        } else if path.is_dir() {
+            writer.add_directory(&zip_path, SimpleFileOptions::default())?;
+            add_dir_to_zip(writer, &path, &format!("{}/", zip_path))?;
+        }
+    }
     Ok(())
 }
